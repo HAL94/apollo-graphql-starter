@@ -1,56 +1,78 @@
 require('dotenv').config();
 
 import 'reflect-metadata';
-import { ApolloServerPluginLandingPageLocalDefault } from 'apollo-server-core';
-import { ApolloServer, ServerInfo } from 'apollo-server';
+import { ApolloServer } from 'apollo-server-express';
+import {
+  ApolloServerPluginDrainHttpServer,
+  ApolloServerPluginLandingPageLocalDefault,
+} from 'apollo-server-core';
+
+import express from 'express';
+import http from 'http';
+import cors from 'cors';
 import { buildSchema } from 'type-graphql';
 
 import resolvers from './resolvers';
 import dataSource from './db';
-
+import { customAuthChecker } from './middlewares';
+import { Context } from './interfaces/Context';
+import cookieParser from 'cookie-parser';
 const port = process.env.PORT || 5000;
 
-export const createTestApolloServer = async (options = { port: 5000 }) => {
-  const server = new ApolloServer({
-    schema: await buildSchema({
-      resolvers: resolvers,
-      validate: false,
-    }),
-  });
-
-  await dataSource.initialize();
-  const serverInfo = await server.listen(options);
-  // serverInfo is an object containing the server instance and the url the server is listening on
-  return serverInfo;
-};
-
-export async function bootstrap(): Promise<ServerInfo | undefined> {
+export async function bootstrap() {
   try {
-    const apolloServer = new ApolloServer({
+    const app = express();
+    const corsOptions = {
+      origin: '*',
+      credentials: true,
+    };
+
+    app.use(express.urlencoded({ extended: false }));
+    app.use(cors(corsOptions));
+    app.use(cookieParser());
+
+    const httpServer = http.createServer(app);
+    const plugins =
+      process.env.NODE_ENV === 'development'
+        ? [
+          ApolloServerPluginDrainHttpServer({ httpServer }),
+          ApolloServerPluginLandingPageLocalDefault({ embed: true }),
+        ]
+        : [];
+
+    const server = new ApolloServer({
       schema: await buildSchema({
         resolvers: resolvers,
         validate: false,
+        authChecker: customAuthChecker,
       }),
       csrfPrevention: true,
-      plugins:
-        process.env.NODE_ENV === 'development'
-          ? [ApolloServerPluginLandingPageLocalDefault({ embed: true })]
-          : [],
+      plugins,
+      context: ({ req, res }): Context => {        
+        return { req, res };
+      },
     });
 
     await dataSource.initialize();
 
+    await server.start();
+
+    server.applyMiddleware({
+      app,
+      path: '/',
+      cors: false,
+    });
+
+    await new Promise<void>((resolve) =>
+      httpServer.listen({ port: port }, resolve),
+    );
+
     if (process.env.NODE_ENV === 'development') {
       console.log('Connection to DB Initialized');
+      console.log(
+        `🚀 Server ready at http://localhost:${port}${server.graphqlPath}`,
+      );
     }
-
-    const serverInfo = await apolloServer.listen({ port });
-    
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`🚀  Server ready at ${serverInfo?.url}`);
-    }
-
-    return serverInfo;
   } catch (error) {
     console.log(error);
   }

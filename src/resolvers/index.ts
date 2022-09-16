@@ -1,5 +1,6 @@
-import TaskResolver from '../tasks/task.resolver';
+import TaskResolver from '../modules/tasks/task.resolver';
+import AuthResolver from '../modules/auth/auth.resolver';
 import { NonEmptyArray } from 'type-graphql';
 
-const resolvers = [TaskResolver];
+const resolvers = [TaskResolver, AuthResolver];
 export default resolvers as NonEmptyArray<any>;

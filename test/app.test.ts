@@ -1,8 +1,9 @@
 // import request from 'supertest';
 import request, { gql } from 'graphql-request';
-import { Server } from 'http';
+import { ApolloServer, ExpressContext } from 'apollo-server-express';
 
-import { createTestApolloServer } from '../src';
+
+import { createTestApolloServer } from '../src/_utils';
 
 const ALL_TASKS = gql`
   query Tasks {
@@ -14,11 +15,11 @@ const ALL_TASKS = gql`
 `;
 
 describe('app', () => {
-  let server: Server, url: string;
+  let server: ApolloServer<ExpressContext>, url: string;
 
   beforeAll(async () => {
     try {
-      ({ server, url } = await createTestApolloServer({ port: 0 }));
+      ({ server, url } = await createTestApolloServer({ port: 8808 }));
     } catch (error) {
       console.log('Error Testing Bootstrap');
       throw error;
@@ -26,13 +27,11 @@ describe('app', () => {
   });
 
   afterAll(async () => {
-    server?.close();
+    server?.stop();
   });
 
-  it('responds with a list of json of tasks', async () => {
-    console.log('url', url);
-    const data = await request(url, ALL_TASKS);
-    // console.log('response', response);
+  it('responds with a list of json of tasks', async () => {    
+    const data = await request(url, ALL_TASKS);    
     expect(data.tasks?.length).toBe(2);
   });
 });
