@@ -4,12 +4,9 @@ import { AUTH_NAMES, decryptToken } from './modules/auth/utils';
 import { User } from './entities';
 // type TContext = Record<'req', express.Request> & Record<'res', express.Response>;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export const LogAccess: MiddlewareFn<any> = ({ context }, next) => {
-  //   const username: string = context?.username || 'guest';
-  console.log(
-    // `Logging access: ${username} -> ${info.parentType.name}.${info.fieldName}`,
-    context,
-  );
+  //   const username: string = context?.username || 'guest';  
   return next();
 };
 

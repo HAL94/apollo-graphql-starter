@@ -1,4 +1,3 @@
-// import request from 'supertest';
 import request, { gql } from 'graphql-request';
 import { ApolloServer, ExpressContext } from 'apollo-server-express';
 

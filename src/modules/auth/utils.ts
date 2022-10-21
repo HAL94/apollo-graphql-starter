@@ -70,14 +70,18 @@ export const sendAuthCookies = (
   userId: string,
 ) => {
   sendCookie(res, AUTH_NAMES.ACCESS_TOKEN_KEY, accessToken, {
-    httpOnly: true,
+    httpOnly: true,    
     path: '/',
     expires: atExpiration,
+    sameSite: 'none',
+    secure: true,    
   });
   sendCookie(res, AUTH_NAMES.REFRESH_TOKEN_KEY, refreshToken, {
-    httpOnly: true,
-    path: '/',
+    httpOnly: true,    
     expires: rtExpiration,
+    sameSite: 'none',
+    path: '/',
+    secure: true,    
   });
   sendCookie(
     res,
@@ -87,6 +91,8 @@ export const sendAuthCookies = (
       httpOnly: false,
       path: '/',
       expires: atExpiration,
+      sameSite: 'none',
+      secure: true,      
     },
   );
 };
@@ -97,9 +103,10 @@ export const decryptToken = (
   secret: string,
 ): any => {
   try {
+    console.log('decrypting', tokenKey, req.cookies);
     const token = req.cookies[tokenKey];
     if (!token) {
-      throw new Error('no token found');
+      return;
     }
 
     return verify(token, secret);

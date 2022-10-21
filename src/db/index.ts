@@ -8,7 +8,7 @@ const dataSource = new DataSource({
   username: 'postgres',
   password: '054937',
   database: 'express-graphql',
-  synchronize: true,
+  synchronize: process.env.NODE_ENV === 'development',
   logging: false,
   entities: entites,
   subscribers: [],

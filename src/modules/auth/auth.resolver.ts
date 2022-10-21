@@ -1,5 +1,5 @@
 // import { Context } from 'apollo-server-core';
-import { Arg, Ctx, Mutation, Query, Resolver } from 'type-graphql';
+import { Arg, Authorized, Ctx, Mutation, Query, Resolver } from 'type-graphql';
 import { Context } from '../../interfaces/Context';
 import { User } from '../user/user.entity';
 import { CredentialsInput } from './dto/input/credentials.input';
@@ -10,6 +10,7 @@ import {
   createAccessToken,
   createRefreshToken,
   decryptToken,
+  revokeRefreshToken,
   sendAuthCookies,
 } from './utils';
 
@@ -17,6 +18,7 @@ import { LoginResponse } from './responses/LoginResponse';
 import { RegisterResponse } from './responses/RegisterResponse';
 import { RefreshResponse } from './responses/RefreshResponse';
 import { LogoutResponse } from './responses/LogoutResponse';
+import { MeResponse, UserPayload } from './responses/MeResponse';
 
 @Resolver()
 export default class AuthResolver {
@@ -50,6 +52,8 @@ export default class AuthResolver {
       @Ctx() context: Context,
   ): Promise<LoginResponse | Error | undefined> {
     try {
+      const loginResponse = new LoginResponse();
+  
       const payload = {
         username: loginInput.username,
         password: loginInput.password,
@@ -57,28 +61,33 @@ export default class AuthResolver {
       const user = await User.findOneBy({
         username: payload.username,
       });
+  
       if (!user) {
-        throw new Error('Not able to log in');
+        loginResponse.message = 'Not able to log in';
+        loginResponse.success = false;
+        return loginResponse;
       }
-
+  
       const isMatch = await bcrypt.compare(payload.password, user.password!);
-
-      if (!isMatch) {
-        throw new Error('Invalid Credentials');
+  
+      if (!isMatch) {      
+        loginResponse.message = 'Invalid Credentials';
+        loginResponse.success = false;
+        return loginResponse;
       }
-
+  
       const { res } = context;
-
+  
       const accessToken = createAccessToken(user);
       const refreshToken = createRefreshToken(user);
-
+  
       const atExpiration = new Date(
         Date.now() + Number(process.env.ACCESS_TOKEN_EXPIRES_IN_MILLI!),
       );
       const rtExpiration = new Date(
         Date.now() + Number(process.env.REFRESH_TOKEN_EXPIRES_IN_MILLI!),
       );
-
+  
       sendAuthCookies(
         res,
         accessToken,
@@ -87,21 +96,24 @@ export default class AuthResolver {
         rtExpiration,
         user.id!,
       );
-
-      const loginResponse = new LoginResponse();
+  
       loginResponse.message = 'Successfully logged in';
       loginResponse.success = true;
-
+  
       return loginResponse;
-    } catch (error) {
-      console.log('error @ login', error);
+    } catch (error: any) {
+      const loginResponse = new LoginResponse();
+      loginResponse.message = error?.message;
+      loginResponse.success = false;
+      return loginResponse;
     }
   }
 
   @Mutation(() => RefreshResponse)
   async refreshToken(@Ctx() context: Context) {
     const response = new RefreshResponse();
-    response.message = 'Unable to refresh your tokens, you might need to login in again!';
+    response.message =
+      'Unable to refresh your tokens, you might need to login in again!';
     response.success = false;
 
     const { req, res } = context;
@@ -112,10 +124,6 @@ export default class AuthResolver {
       payload = decryptToken(req, rtKey, process.env.REFRESH_TOKEN_SECRET!);
     } catch (error) {
       throw error;
-    }
-
-    if (typeof payload === 'boolean') {
-      return response;
     }
 
     const user = await User.findOneBy({ id: payload.userId });
@@ -149,7 +157,8 @@ export default class AuthResolver {
     return response;
   }
 
-  @Query(() => String)
+  @Query(() => MeResponse)
+  @Authorized()
   me(@Ctx() context: Context) {
     try {
       const { req } = context;
@@ -160,18 +169,22 @@ export default class AuthResolver {
           AUTH_NAMES.ACCESS_TOKEN_KEY,
           process.env.ACCESS_TOKEN_SECRET!,
         );
+        const userPayload = new UserPayload(payload.userId, payload.expires, payload.iat, payload.exp);
+        
+        console.log('payload of me', payload);
+        return {
+          user: userPayload,
+          success: true,
+        };
       } catch (error) {
-        return '';
-      }
-
-      if (typeof payload === 'boolean') {
-        return '';
-      }
-
-      return `${payload.userId}`;
+        throw error;
+      }      
     } catch (error) {
       console.log('Error at me', error);
-      throw error;
+      return {
+        success: false,
+        user: null,
+      };
     }
   }
 
@@ -182,7 +195,17 @@ export default class AuthResolver {
       response.message = 'Successufully Logged Out';
       response.success = true;
 
-      const { res } = context;
+      const { req, res } = context;
+      // console.log('cookies', req.cookies);
+      // Refresh Token Key
+      const rtKey = AUTH_NAMES.REFRESH_TOKEN_KEY;
+      // Payload of RT Token
+      let payload = null;
+      payload = decryptToken(req, rtKey, process.env.REFRESH_TOKEN_SECRET!);
+      // Revoking the refresh token
+      await revokeRefreshToken(payload);
+
+      // Remove all cookies
       clearSession(res);
 
       return response;
